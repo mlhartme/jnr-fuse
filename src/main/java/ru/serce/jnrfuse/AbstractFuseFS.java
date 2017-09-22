@@ -6,10 +6,11 @@ import jnr.ffi.Runtime;
 import jnr.ffi.Struct;
 import jnr.ffi.mapper.FromNativeConverter;
 import jnr.ffi.provider.jffi.ClosureHelper;
+import jnr.posix.util.Platform;
 import ru.serce.jnrfuse.struct.*;
+import ru.serce.jnrfuse.utils.MountUtils;
 import ru.serce.jnrfuse.utils.SecurityUtils;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,17 +23,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-/**
- * Created by serce on 27.05.15.
- */
 public abstract class AbstractFuseFS implements FuseFS {
-
-    interface LibFuseProbe {
-    }
-
-    interface LibMacFuseProbe extends LibFuseProbe {
-        String macfuse_version();
-    }
 
     private static final int TIMEOUT = 2000; // ms
     private static final String[] osxFuseLibraries = {"fuse4x", "osxfuse", "macfuse", "fuse"};
@@ -67,6 +58,10 @@ public abstract class AbstractFuseFS implements FuseFS {
                     // which will be more meaningful to the user than a NullPointerException on libFuse.
                     libFuse = LibraryLoader.create(LibFuse.class).failImmediately().load("fuse");
                 }
+                break;
+            case WINDOWS:
+                String winFspPath = System.getProperty("jnrfuse.winfsp.path", "C:\\Program Files (x86)\\WinFsp\\bin\\winfsp-x64.dll");
+                libFuse = loader.load(winFspPath);
                 break;
             default:
                 // try fuse
@@ -243,10 +238,14 @@ public abstract class AbstractFuseFS implements FuseFS {
         }
         this.mountPoint = mountPoint;
         String[] arg;
+        String mountPointStr = mountPoint.toAbsolutePath().toString();
+        if (mountPointStr.endsWith("\\")) {
+            mountPointStr = mountPointStr.substring(0, mountPointStr.length() - 1);
+        }
         if (!debug) {
-            arg = new String[]{getFSName(), "-f", mountPoint.toAbsolutePath().toString()};
+            arg = new String[]{getFSName(), "-f", mountPointStr};
         } else {
-            arg = new String[]{getFSName(), "-f", "-d", mountPoint.toAbsolutePath().toString()};
+            arg = new String[]{getFSName(), "-f", "-d", mountPointStr};
         }
         if (fuseOpts.length != 0) {
             int argLen = arg.length;
@@ -256,8 +255,11 @@ public abstract class AbstractFuseFS implements FuseFS {
 
         final String[] args = arg;
         try {
-            if (!Files.isDirectory(mountPoint)) {
-                throw new FuseException("Mount point should be directory");
+            if (!Platform.IS_WINDOWS) {
+                // winfsp requires non-existing directory to be provided
+                if (!Files.isDirectory(mountPoint)) {
+                    throw new FuseException("Mount point should be directory");
+                }
             }
             if (SecurityUtils.canHandleShutdownHooks()) {
                 java.lang.Runtime.getRuntime().addShutdownHook(new Thread(this::umount));
@@ -297,17 +299,8 @@ public abstract class AbstractFuseFS implements FuseFS {
         if (!mounted.get()) {
             return;
         }
-        try {
-            String mountPath = mountPoint.toAbsolutePath().toString();
-            try {
-                new ProcessBuilder("fusermount", "-u", "-z", mountPath).start();
-            } catch (IOException e) {
-                new ProcessBuilder("umount", mountPath).start();
-            }
-            mounted.set(false);
-        } catch (IOException e) {
-            throw new FuseException("Unable to umount FS", e);
-        }
+        MountUtils.umount(mountPoint);
+        mounted.set(false);
     }
 
     protected String getFSName() {

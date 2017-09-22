@@ -1,6 +1,7 @@
 package ru.serce.jnrfuse.examples;
 
 
+import jnr.ffi.Platform;
 import jnr.ffi.Pointer;
 import jnr.ffi.types.mode_t;
 import jnr.ffi.types.off_t;
@@ -9,14 +10,16 @@ import ru.serce.jnrfuse.ErrorCodes;
 import ru.serce.jnrfuse.FuseFillDir;
 import ru.serce.jnrfuse.FuseStubFS;
 import ru.serce.jnrfuse.struct.FileStat;
-import ru.serce.jnrfuse.struct.FuseBufvec;
 import ru.serce.jnrfuse.struct.FuseFileInfo;
+import ru.serce.jnrfuse.struct.Statvfs;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+
+import static jnr.ffi.Platform.OS.WINDOWS;
 
 public class MemoryFS extends FuseStubFS {
     private class MemoryDirectory extends MemoryPath {
@@ -70,6 +73,8 @@ public class MemoryFS extends FuseStubFS {
         @Override
         protected void getattr(FileStat stat) {
             stat.st_mode.set(FileStat.S_IFDIR | 0777);
+            stat.st_uid.set(getContext().uid.get());
+            stat.st_gid.set(getContext().pid.get());
         }
 
         private synchronized void mkdir(String lastComponent) {
@@ -112,6 +117,8 @@ public class MemoryFS extends FuseStubFS {
         protected void getattr(FileStat stat) {
             stat.st_mode.set(FileStat.S_IFREG | 0777);
             stat.st_size.set(contents.capacity());
+            stat.st_uid.set(getContext().uid.get());
+            stat.st_gid.set(getContext().pid.get());
         }
 
         private int read(Pointer buffer, long size, long offset) {
@@ -199,7 +206,15 @@ public class MemoryFS extends FuseStubFS {
     public static void main(String[] args) {
         MemoryFS memfs = new MemoryFS();
         try {
-            memfs.mount(Paths.get("/tmp/mnttt"), true);
+            String path;
+            switch (Platform.getNativePlatform().getOS()) {
+                case WINDOWS:
+                    path = "J:\\";
+                    break;
+                default:
+                    path = "/tmp/mntm";
+            }
+            memfs.mount(Paths.get(path), true, true);
         } finally {
             memfs.umount();
         }
@@ -304,6 +319,23 @@ public class MemoryFS extends FuseStubFS {
         return 0;
     }
 
+
+    @Override
+    public int statfs(String path, Statvfs stbuf) {
+        if (Platform.getNativePlatform().getOS() == WINDOWS) {
+            // statfs needs to be implemented on Windows in order to allow for copying
+            // data from other devices because winfsp calculates the volume size based
+            // on the statvfs call.
+            // see https://github.com/billziss-gh/winfsp/blob/14e6b402fe3360fdebcc78868de8df27622b565f/src/dll/fuse/fuse_intf.c#L654
+            if ("/".equals(path)) {
+                stbuf.f_blocks.set(1024 * 1024); // total data blocks in file system
+                stbuf.f_frsize.set(1024);        // fs block size
+                stbuf.f_bfree.set(1024 * 1024);  // free blocks in fs
+            }
+        }
+        return super.statfs(path, stbuf);
+    }
+
     @Override
     public int rename(String path, String newName) {
         MemoryPath p = getPath(path);
@@ -356,6 +388,11 @@ public class MemoryFS extends FuseStubFS {
             return -ErrorCodes.ENOENT();
         }
         p.delete();
+        return 0;
+    }
+
+    @Override
+    public int open(String path, FuseFileInfo fi) {
         return 0;
     }
 

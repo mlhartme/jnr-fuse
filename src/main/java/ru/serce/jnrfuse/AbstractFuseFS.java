@@ -84,6 +84,10 @@ public abstract class AbstractFuseFS implements FuseFS {
         init(fuseOperations);
     }
 
+    public void exit(Struct.Pointer fuse) {
+        libFuse.fuse_exit(fuse);
+    }
+
     public FuseContext getContext() {
         return libFuse.fuse_get_context();
     }

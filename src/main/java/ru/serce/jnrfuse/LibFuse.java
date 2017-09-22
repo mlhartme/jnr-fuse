@@ -1,6 +1,7 @@
 package ru.serce.jnrfuse;
 
 import jnr.ffi.Pointer;
+import jnr.ffi.Struct;
 import jnr.ffi.types.size_t;
 import jnr.ffi.types.ssize_t;
 import ru.serce.jnrfuse.struct.FuseBufvec;
@@ -28,6 +29,8 @@ public interface LibFuse {
     int fuse_notify_poll(FusePollhandle ph);
 
     FuseContext fuse_get_context();
+
+    void fuse_exit(Struct.Pointer fuse);
 
     /**
      * Main function of FUSE.

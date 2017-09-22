@@ -30,7 +30,7 @@ public interface LibFuse {
 
     FuseContext fuse_get_context();
 
-    void fuse_exit(Struct.Pointer fuse);
+    void fuse_exit(Pointer fuse);
 
     /**
      * Main function of FUSE.

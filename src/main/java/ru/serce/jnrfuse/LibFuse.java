@@ -30,8 +30,6 @@ public interface LibFuse {
 
     FuseContext fuse_get_context();
 
-    void fuse_exit(Pointer fuse);
-
     /**
      * Main function of FUSE.
      * <p>
@@ -51,4 +49,20 @@ public interface LibFuse {
      * @return 0 on success, nonzero on failure
      */
     int fuse_main_real(int argc, String[] argv, FuseOperations op, int op_size, Pointer user_data);
+
+
+    //-- From https://github.com/libfuse/libfuse/blob/master/include/fuse.h
+
+    // int fuse_main_real(int argc, char *argv[], const struct fuse_operations *op, size_t op_size, void *private_data);
+   // struct fuse *fuse_new(struct fuse_args *args, const struct fuse_operations *op, size_t op_size, void *private_data);
+
+    Pointer fuse_new(Pointer fuse_args, FuseOperations op, int op_size, Pointer user_data);
+
+    int fuse_mount(Pointer fuse, String path);
+    void fuse_unmount(Pointer fuse);
+
+    void fuse_exit(Pointer fuse);
+    void fuse_loop(Pointer fuse);
+
+    void fuse_destroy(Pointer fuse);
 }
